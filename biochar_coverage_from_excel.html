@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Acidified Biochar Intensity Heatmap & Overlay Circles</title>
+<style>
+  :root{--bg:#0b1020;--card:#121833;--bd:#243057;--ink:#e9eef9}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink)}
+  h1{font-size:20px;margin:0 0 8px}
+  .grid{display:grid;grid-template-columns:420px 1fr;gap:16px;padding:20px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px}
+  label{font-size:13px;opacity:.9}
+  input,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2a355f;background:#0f1530;color:var(--ink)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .muted{opacity:.8;font-size:12px}
+  .kv{display:flex;justify-content:space-between;gap:8px;margin:6px 0}
+  .num{font-variant-numeric:tabular-nums}
+  .pill{font-size:12px;background:#1a2350;border:1px solid #2b3b7a;border-radius:999px;padding:2px 8px;display:inline-block;margin-left:6px}
+  canvas{width:100%;height:560px;min-width:320px;min-height:360px;background:#0a0f25;border-radius:12px;border:1px solid var(--bd)}
+  @media (max-width: 1100px){.grid{grid-template-columns:1fr}}
+  .legend{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .bar{height:10px;border-radius:6px;flex:1;background:linear-gradient(90deg,#061a3a,#2b6cb0,#4bb5a9,#88cc5a,#f5e663)}
+  .chk{display:flex;align-items:center;gap:8px}
+  .chk input{width:auto}
+  .sep{height:1px;background:#1f2a52;margin:10px 0}
+  button{padding:10px 12px;border-radius:10px;border:1px solid #2a355f;background:#16214a;color:#e9eef9;cursor:pointer}
+  button:hover{filter:brightness(1.08)}
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="card">
+      <h1>Acidified Biochar Intensity Heatmap & Overlay Circles <span class="pill">V1.0</span></h1>
+
+      <div class="row">
+        <div>
+          <label>Alkali/Buffer</label>
+          <select id="baseSel"></select>
+        </div>
+        <div>
+          <label>Acid</label>
+          <select id="acidSel"></select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Initial soil pH</label>
+          <select id="soilpH"></select>
+        </div>
+        <div>
+          <label>Acid concentration（M）</label>
+          <select id="molar"></select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Penetration radius R (mm, automatically brought out, can be covered)</label>
+          <input id="Rmm" type="number" step="0.1" value="9" />
+          <div class="muted">Taken from built-in R<sub>5h</sub> data.</div>
+        </div>
+        <div>
+          <label>Residual strength α at r=R</label>
+          <input id="alphaAtR" type="number" step="0.01" min="0.05" max="0.9" value="0.3" />
+          <div class="muted">Controls attenuation contrast, default is 0.3。</div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Dosage per point m₀ (g/point)</label>
+          <input id="m0g" type="number" step="0.001" value="0.005" />
+        </div>
+        <div>
+          <label>Processing thickness H (m)</label>
+          <input id="H" type="number" step="0.01" value="0.10" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label>Point spacing factor k (relative to d_opt)</label>
+          <input id="k" type="range" min="0.30" max="1.50" step="0.01" value="1.00" />
+          <div class="kv"><span class="muted">Current k</span><strong class="num" id="kVal">1.00</strong></div>
+          <button id="resetK" type="button">Restore optimal d_opt</button>
+        </div>
+        <div>
+          <label>Display options</label>
+          <div class="chk" style="margin-top:6px">
+            <input id="showCircles" type="checkbox" checked />
+            <label for="showCircles">Covering circle (radius = R)</label>
+          </div>
+          <div class="chk">
+            <input id="equalize" type="checkbox" />
+            <label for="equalize">Enhance contrast (Adaptive Levels)</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="row3">
+        <div class="kv"><span class="muted">Optimal point distance d_opt</span><span class="num" id="dopt">—</span></div>
+        <div class="kv"><span class="muted">Current d = k·d_opt</span><span class="num" id="dnow">—</span></div>
+        
+      </div>
+      <div class="row3">
+        <div class="kv"><span class="muted">n_opt</span><span class="num" id="nopt">—</span></div>
+		<div class="kv"><span class="muted">M_area</span><span class="num" id="marea">—</span></div>
+        <div class="kv"><span class="muted">ρ_vol</span><span class="num" id="rhov">—</span></div>
+        
+      </div>
+
+      <div class="legend">
+        <span class="muted">Intensity</span>
+        <div class="bar"></div>
+        <span class="muted">Low → High</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>Overlay intensity heatmap (no seams; peaks are at the center of the circles)</label>
+      <canvas id="cv"></canvas>
+      <div class="row" style="margin-top:8px">
+        <div class="muted">Period: rectangular cells of width a and height 2h (two rows offset)</div>      
+      </div>
+	  <div class="muted">Drag k to observe the changes after the distance is reduced</div>
+	  <div class="muted"> <br>  </div>
+	  <div class="muted">Strength average/highest/highest</div>
+	  <div class="kv"><span class="num" id="stats"></span>
+    </div>
+  </div>
+
+<script>
+// ===== 1) 内置数据库（示例；你可替换为完整Excel提取的DB） =====
+// 结构：DB[Base][Acid][Soil pH][Molarity] = R5h(mm)
+const DB = {
+  "Ca(OH)2": {
+    "Formic": {"8.5": {"0.5": 6.5, "1.0": 8.5}, "9.5":{"0.5": 10.1, "1.0": 8.7}},
+    "Citric": {"8.5": {"0.5": 4.5, "1.0": 9.0}, "9.5":{"0.5": 8.8, "1.0": 8.4}},
+    "Acetic": {"8.5": {"0.5": 4.4, "1.0": 12.1}, "9.5":{"0.5": 7.5, "1.0": 9.0}}
+  },
+  "Na2CO3": {
+    "Formic": {"8.5": {"0.5": 6.9, "1.0": 7.9}, "9.5":{"0.5": 7.4, "1.0": 9.4}},
+    "Citric": {"8.5": {"0.5": 4.7, "1.0": 8.1}, "9.5":{"0.5": 7.6, "1.0": 8.0}},
+    "Acetic": {"8.5": {"0.5": 5.0, "1.0": 7.1}, "9.5":{"0.5": 7.5, "1.0": 8.1}}
+  },
+  "NaOH": {
+    "Formic": {"8.5": {"0.5": 6.1, "1.0": 7.5}, "9.5":{"0.5": 7.1, "1.0": 8.3}},
+    "Citric": {"8.5": {"0.5": 6.9, "1.0": 7.2}, "9.5":{"0.5": 6.3, "1.0": 10.3}},
+    "Acetic": {"8.5": {"0.5": 6.0, "1.0": 8.8}, "9.5":{"0.5": 7.4, "1.0": 7.5}}
+  }
+};
+// ===== 2) 元素引用 =====
+const baseSel = document.getElementById('baseSel');
+const acidSel = document.getElementById('acidSel');
+const soilpH  = document.getElementById('soilpH');
+const molar   = document.getElementById('molar');
+const Rmm     = document.getElementById('Rmm');
+const alphaAtR= document.getElementById('alphaAtR');
+const m0g     = document.getElementById('m0g');
+const H       = document.getElementById('H');
+const kRange  = document.getElementById('k');
+const kVal    = document.getElementById('kVal');
+const resetK  = document.getElementById('resetK');
+const showCircles = document.getElementById('showCircles');
+const equalize= document.getElementById('equalize');
+const dopt = document.getElementById('dopt');
+const dnow = document.getElementById('dnow');
+const nopt = document.getElementById('nopt');
+const marea= document.getElementById('marea');
+const rhov = document.getElementById('rhov');
+const statsEl = document.getElementById('stats');
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+// ===== 3) 级联填充（只更新下级并尽量保留已选） =====
+function populateBases(){
+  const cur = baseSel.value;
+  const bases = Object.keys(DB);
+  baseSel.innerHTML = bases.map(b=>`<option>${b}</option>`).join('');
+  if (bases.includes(cur)) baseSel.value = cur;
+}
+function populateAcids(){
+  const cur = acidSel.value;
+  const acids = Object.keys(DB[baseSel.value] || {});
+  acidSel.innerHTML = acids.map(a=>`<option>${a}</option>`).join('');
+  if (acids.includes(cur)) acidSel.value = cur;
+}
+function populatePH(){
+  const cur = soilpH.value;
+  const phs = Object.keys(((DB[baseSel.value]||{})[acidSel.value]||{}));
+  soilpH.innerHTML = phs.map(p=>`<option>${p}</option>`).join('');
+  if (phs.includes(cur)) soilpH.value = cur;
+}
+function populateMolar(){
+  const cur = molar.value;
+  const ms = Object.keys((((DB[baseSel.value]||{})[acidSel.value]||{})[soilpH.value]||{}));
+  molar.innerHTML = ms.map(m=>`<option>${m}</option>`).join('');
+  if (ms.includes(cur)) molar.value = cur;
+}
+function autofillR(){
+  const r = (((DB[baseSel.value]||{})[acidSel.value]||{})[soilpH.value]||{})[molar.value];
+  if (r!=null) Rmm.value = r;
+}
+
+// ===== 4) 物理计算 & 绘图 =====
+function fmt(x,k=2){ return (Math.round((+x+Number.EPSILON)*10**k)/10**k).toLocaleString() }
+function params(){
+  const R_mm  = Math.max(0.1, parseFloat(Rmm.value)||9);
+  const k     = Math.max(0.3, Math.min(1.5, parseFloat(kRange.value)||1));
+  const R_m   = R_mm/1000;
+  const doptV = Math.sqrt(3)*R_mm;   // mm
+  const dnowV = k*doptV;             // mm
+  const n     = 2/(3*Math.sqrt(3)*(R_m*R_m)*k*k); // 点/m²
+  const m0_kg = (parseFloat(m0g.value)||0)/1000;
+  const H_m   = (parseFloat(H.value)||0.1);
+  const M_a   = m0_kg*n;
+  const rho   = M_a/H_m;
+  const alpha = Math.max(0.05, Math.min(0.9, parseFloat(alphaAtR.value)||0.2));
+  const L_mm  = R_mm / Math.log(1/alpha);
+  return {R_mm,k,doptV,dnowV,n,M_a,rho,L_mm};
+}
+// 配色
+function colormap01(t){
+  t = Math.max(0, Math.min(1, t));
+  const p = [[0.00, 6,  26, 58],[0.35, 43, 108,176],[0.60, 75, 181,169],[0.85,136, 204, 90],[1.00,245, 230, 99]];
+  let i=0; while(i<p.length-1 && t>p[i+1][0]) i++;
+  const [t0,r0,g0,b0]=p[i], [t1,r1,g1,b1]=p[Math.min(i+1,p.length-1)];
+  const u=(t - t0)/Math.max(1e-6,(t1-t0));
+  const r=r0+(r1-r0)*u, g=g0+(g1-g0)*u, b=b0+(b1-b0)*u;
+  return [Math.round(r),Math.round(g),Math.round(b)];
+}
+// 构建平铺 tile（两行错位，消除接缝）
+function buildTile(p, enhance){
+  const a = p.dnowV;
+  const h = a * Math.sin(Math.PI/3);
+  const cellW = a, cellH = 2*h;
+  const pxPerMm = Math.max(5, Math.min(18, 360/cellW));
+  const W = Math.max(80, Math.round(cellW*pxPerMm));
+  const Hh= Math.max(80, Math.round(cellH*pxPerMm));
+  const off = document.createElement('canvas');
+  off.width = W; off.height = Hh;
+  const octx = off.getContext('2d');
+  const img  = octx.createImageData(W, Hh);
+  const data = img.data;
+
+  const Rcut = 3*p.R_mm;
+  const nr = Math.ceil(Rcut/h) + 3;
+  const nc = Math.ceil(Rcut/a) + 3;
+
+  const centers = [];
+  for (let r=-nr; r<=nr; r++){
+    const y = r*h;
+    const xoff = (r & 1) ? a/2 : 0;
+    for (let c=-nc; c<=nc; c++){
+      centers.push([c*a + xoff, y]);
+    }
+  }
+
+  let Imin=Infinity, Imax=-Infinity, Isum=0;
+  const tmp = new Float32Array(W*Hh);
+
+  for (let py=0; py<Hh; py++){
+    for (let px=0; px<W; px++){
+      const x = (px+0.5)/pxPerMm;
+      const y = (py+0.5)/pxPerMm;
+      let I = 0;
+      for (const [cx,cy] of centers){
+        const r = Math.hypot(x-cx, y-cy);
+        I += Math.exp(- r / p.L_mm);
+      }
+      tmp[py*W+px]=I;
+      Imin=Math.min(Imin,I); Imax=Math.max(Imax,I); Isum+=I;
+    }
+  }
+  const mean = Isum/(W*Hh);
+  const vmin = 0;
+  const vmax = enhance ? Math.min(Imax, mean*2.4) : Imax;
+
+  for (let py=0; py<Hh; py++){
+    for (let px=0; px<W; px++){
+      const I = tmp[py*W+px];
+      const t = Math.max(0, Math.min(1, (I-vmin)/Math.max(1e-6,(vmax-vmin))));
+      const [r,g,b]=colormap01(t);
+      const idx=(py*W+px)*4;
+      data[idx]=r; data[idx+1]=g; data[idx+2]=b; data[idx+3]=255;
+    }
+  }
+  octx.putImageData(img,0,0);
+  return {canvas:off, stats:{mean,min:Imin,max:Imax}, pxPerMm, a, h};
+}
+function drawCircles(a, h, R_mm, pxPerMm){
+  const rect=cv.getBoundingClientRect();
+  const W=Math.max(320, Math.round(rect.width));
+  const H=Math.max(360, Math.round(rect.height));
+  const Rpx = R_mm*pxPerMm;
+
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle='rgba(255,255,255,0.28)';
+
+  const cols = Math.ceil(W/(a*pxPerMm)) + 2;
+  const rows = Math.ceil(H/(h*pxPerMm)) + 2;
+
+  for(let r=-1; r<=rows; r++){
+    const y = r*h*pxPerMm;
+    const xoff = ((r & 1) ? a/2 : 0)*pxPerMm;
+    for(let c=-1; c<=cols; c++){
+      const x = c*a*pxPerMm + xoff;
+      ctx.beginPath(); ctx.arc(x,y,Rpx,0,Math.PI*2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function redraw(){
+  const p = params();
+  kVal.textContent = (+kRange.value).toFixed(2);
+  dopt.textContent = fmt(p.doptV,2)+' mm';
+  dnow.textContent = fmt(p.dnowV,2)+' mm';
+  nopt.textContent = fmt(p.n,0)+' points/m²';
+  marea.textContent= fmt(p.M_a,4)+' kg/m²';
+  rhov.textContent = fmt(p.rho,3)+' kg/m³';
+
+  const {canvas:tile, stats, pxPerMm, a, h} = buildTile(p, equalize.checked);
+  statsEl.textContent = `${fmt(stats.mean,3)} / ${fmt(stats.min,3)} / ${fmt(stats.max,3)}`;
+
+  const DPR=window.devicePixelRatio||1;
+  const rect=cv.getBoundingClientRect();
+  const W=Math.max(320, Math.round(rect.width));
+  const Hh=Math.max(360, Math.round(rect.height));
+  cv.width=Math.round(W*DPR); cv.height=Math.round(Hh*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,W,Hh);
+
+  const pat=ctx.createPattern(tile,'repeat');
+  ctx.fillStyle=pat; ctx.fillRect(0,0,W,Hh);
+  if (showCircles.checked) drawCircles(a, h, p.R_mm, pxPerMm);
+}
+
+// ===== 5) 事件：按层级更新 =====
+baseSel.addEventListener('change', ()=>{
+  populateAcids(); populatePH(); populateMolar(); autofillR(); redraw();
+});
+acidSel.addEventListener('change', ()=>{
+  populatePH(); populateMolar(); autofillR(); redraw();
+});
+soilpH.addEventListener('change', ()=>{
+  populateMolar(); autofillR(); redraw();
+});
+molar.addEventListener('change', ()=>{
+  autofillR(); redraw();
+});
+Rmm.addEventListener('change', redraw);
+[m0g,H,alphaAtR].forEach(el=> el.addEventListener('change', redraw));
+[showCircles,equalize].forEach(el=> el.addEventListener('change', redraw));
+kRange.addEventListener('input', ()=>{ kVal.textContent=(+kRange.value).toFixed(2); });
+kRange.addEventListener('change', redraw);
+resetK.addEventListener('click', ()=>{ kRange.value='1.00'; kVal.textContent='1.00'; redraw(); });
+
+// ===== 6) 初始化：先自上而下填充，再绘图 =====
+populateBases(); 
+populateAcids(); 
+populatePH(); 
+populateMolar(); 
+autofillR();
+const ro=new ResizeObserver(()=> redraw()); ro.observe(document.body);
+redraw();
+</script>
+</body>
+</html>
